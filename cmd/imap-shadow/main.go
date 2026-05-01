@@ -50,20 +50,25 @@ func main() {
 	p.SetRules(cfg.CompileRules())
 
 	// ACME via HTTP-01.
-	tlsCfg, httpHandler := newACME(cfg)
+	tlsCfg, httpHandler, acmeMgr := newACME(cfg)
 
 	// HTTP-01 challenge server. Must be reachable from the internet on :80.
+	httpLn, err := net.Listen("tcp", cfg.ACME.HTTPAddr)
+	if err != nil {
+		log.Fatalf("acme http listen: %v", err)
+	}
 	httpSrv := &http.Server{
-		Addr:              cfg.ACME.HTTPAddr,
 		Handler:           httpHandler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Printf("acme: listening on %s for HTTP-01 challenges", httpSrv.Addr)
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("acme: listening on %s for HTTP-01 challenges", httpLn.Addr().String())
+		if err := httpSrv.Serve(httpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("acme http: %v", err)
 		}
 	}()
+	warmCtx, warmCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	go warmCertificates(warmCtx, acmeMgr, cfg.ACME.Hostnames)
 
 	// IMAPS listener.
 	rawLn, err := net.Listen("tcp", cfg.Listen.Addr)
@@ -89,6 +94,7 @@ func main() {
 				log.Printf("reload: rules updated")
 			case syscall.SIGINT, syscall.SIGTERM:
 				log.Printf("shutdown: signal %s", sig)
+				warmCancel()
 				_ = tlsLn.Close()
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				_ = httpSrv.Shutdown(ctx)
@@ -105,7 +111,7 @@ func main() {
 
 // newACME constructs an autocert.Manager-backed *tls.Config plus the HTTP
 // handler that serves HTTP-01 challenges.
-func newACME(cfg *config.Config) (*tls.Config, http.Handler) {
+func newACME(cfg *config.Config) (*tls.Config, http.Handler, *autocert.Manager) {
 	if len(cfg.ACME.Hostnames) == 0 {
 		log.Fatal("acme.hostnames must be set")
 	}
@@ -125,5 +131,38 @@ func newACME(cfg *config.Config) (*tls.Config, http.Handler) {
 		m.Client = &acme.Client{DirectoryURL: cfg.ACME.Directory}
 	}
 	tlsCfg := m.TLSConfig()
-	return tlsCfg, m.HTTPHandler(nil)
+	return tlsCfg, m.HTTPHandler(nil), m
+}
+
+func warmCertificates(ctx context.Context, m *autocert.Manager, hostnames []string) {
+	for _, host := range uniqueHostnames(hostnames) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		log.Printf("acme: ensuring certificate for %s", host)
+		_, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: host})
+		if err != nil {
+			log.Printf("acme: initial certificate request for %s failed: %v", host, err)
+			continue
+		}
+		log.Printf("acme: certificate ready for %s", host)
+	}
+}
+
+func uniqueHostnames(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, h := range in {
+		if h == "" {
+			continue
+		}
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
+	}
+	return out
 }
