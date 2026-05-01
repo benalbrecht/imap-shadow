@@ -42,14 +42,14 @@ func TestHideCascadesToSubfolders(t *testing.T) {
 	}
 	m := r.For("anyone")
 	cases := map[string]bool{
-		"Trash":             true,
-		"Trash/2024":        true,
-		"Trash/Old/Deep":    true,
-		"Archive/Legacy":    true,
-		"Archive/Legacy/X":  true,
-		"Archive":           false,
-		"Archive/Other":     false,
-		"OtherFolder":       false,
+		"Trash":            true,
+		"Trash/2024":       true,
+		"Trash/Old/Deep":   true,
+		"Archive/Legacy":   true,
+		"Archive/Legacy/X": true,
+		"Archive":          false,
+		"Archive/Other":    false,
+		"OtherFolder":      false,
 	}
 	for name, want := range cases {
 		if got := m.ShouldHide(name); got != want {
