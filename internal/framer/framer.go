@@ -30,7 +30,15 @@ import (
 // ErrLiteralTooLarge is returned when a literal exceeds the maximum allowed size.
 var ErrLiteralTooLarge = errors.New("framer: literal too large")
 
+// ErrLineTooLong is returned when a line exceeds the maximum allowed size.
+var ErrLineTooLong = errors.New("framer: line too long")
+
 const maxLiteralSize = 256 * 1024 * 1024 // 256 MiB
+
+// maxLineSize is maxLiteralSize plus a generous 64 KiB allowance for the
+// rest of the logical line (commands, multiple literal markers, etc.) to
+// prevent unbounded memory growth on infinite non-newline streams.
+const maxLineSize = maxLiteralSize + 65536
 
 // Framer reads logical IMAP lines from an underlying byte stream.
 type Framer struct {
@@ -48,11 +56,20 @@ func New(r io.Reader) *Framer {
 func (f *Framer) ReadLine() ([]byte, error) {
 	var out []byte
 	for {
-		chunk, err := f.br.ReadBytes('\n')
+		chunk, err := f.br.ReadSlice('\n')
 		if len(chunk) > 0 {
 			out = append(out, chunk...)
 		}
+
+		if len(out) > maxLineSize {
+			return out, ErrLineTooLong
+		}
+
 		if err != nil {
+			if errors.Is(err, bufio.ErrBufferFull) {
+				// We haven't seen a newline yet. Keep going.
+				continue
+			}
 			if errors.Is(err, io.EOF) {
 				if len(out) == 0 {
 					return nil, io.EOF
@@ -70,6 +87,9 @@ func (f *Framer) ReadLine() ([]byte, error) {
 		if n > 0 {
 			if n > maxLiteralSize {
 				return out, ErrLiteralTooLarge
+			}
+			if len(out)+n > maxLineSize {
+				return out, ErrLineTooLong
 			}
 			payload := make([]byte, n)
 			if _, err := io.ReadFull(f.br, payload); err != nil {
