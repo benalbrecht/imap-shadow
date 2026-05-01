@@ -173,6 +173,8 @@ func handshakeClient(client net.Conn) error {
 	if !ok {
 		return nil
 	}
+	_ = tlsClient.SetDeadline(time.Now().Add(10 * time.Second))
+	defer func() { _ = tlsClient.SetDeadline(time.Time{}) }()
 	return tlsClient.Handshake()
 }
 

@@ -5,6 +5,7 @@ package proxy
 
 import (
 	"bufio"
+	"crypto/tls"
 	"net"
 	"strings"
 	"testing"
@@ -147,5 +148,49 @@ func TestHandleReportsDialError(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("expected BYE banner on dial error")
+	}
+}
+
+type fastTimeoutConn struct {
+	net.Conn
+}
+
+func (c *fastTimeoutConn) SetDeadline(t time.Time) error {
+	// If a deadline is being set (not zero), aggressively shorten it to 10ms for fast testing
+	if !t.IsZero() {
+		return c.Conn.SetDeadline(time.Now().Add(10 * time.Millisecond))
+	}
+	return c.Conn.SetDeadline(t)
+}
+
+func TestHandshakeClientTimeout(t *testing.T) {
+	// Set up a mock client side that never completes the handshake
+	clientSide, proxyClient := net.Pipe()
+	defer clientSide.Close()
+
+	// Wrap proxyClient to shorten the SetDeadline call internally
+	proxyClientFast := &fastTimeoutConn{Conn: proxyClient}
+
+	// Create a TLS server conn wrapping the proxy client side
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{}, // Not fully valid config, but enough for a timeout
+	}
+	tlsConn := tls.Server(proxyClientFast, tlsConfig)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- handshakeClient(tlsConn)
+	}()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected handshake to fail with an error, got nil")
+		}
+		if !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "deadline") {
+			t.Errorf("expected timeout error, got %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("handshakeClient did not time out within expected short duration")
 	}
 }
