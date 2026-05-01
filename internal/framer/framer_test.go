@@ -148,3 +148,14 @@ func TestReadLineReturnsCopySafeForMutation(t *testing.T) {
 		t.Errorf("got %q (mutation of first read leaked into second)", second)
 	}
 }
+
+func TestMaliciousLargeLiteral(t *testing.T) {
+	// A maliciously large literal size should result in io.ErrUnexpectedEOF
+	// and not a panic due to OOM when allocating the payload buffer.
+	in := "a1 X {1000000000000}\r\n"
+	f := New(strings.NewReader(in))
+	_, err := f.ReadLine()
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("got %v want io.ErrUnexpectedEOF", err)
+	}
+}
