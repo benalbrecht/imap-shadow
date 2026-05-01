@@ -130,8 +130,22 @@ func TestHandleReportsDialError(t *testing.T) {
 	p.SetRules(&rules.Rules{})
 	clientSide, proxyClient := net.Pipe()
 	defer clientSide.Close()
+	byeCh := make(chan string, 1)
+	go func() {
+		br := bufio.NewReader(clientSide)
+		line, _ := br.ReadString('\n')
+		byeCh <- line
+	}()
 	err := p.Handle(proxyClient)
 	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") {
 		t.Errorf("expected dial error, got %v", err)
+	}
+	select {
+	case got := <-byeCh:
+		if got != "* BYE upstream unavailable\r\n" {
+			t.Errorf("unexpected BYE: %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("expected BYE banner on dial error")
 	}
 }

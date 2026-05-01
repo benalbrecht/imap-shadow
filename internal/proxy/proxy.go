@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"github.com/pires/go-proxyproto"
 
@@ -116,8 +117,12 @@ func (p *Proxy) Serve(ln net.Listener) error {
 // close both ends when done.
 func (p *Proxy) Handle(client net.Conn) error {
 	defer client.Close()
+	if err := handshakeClient(client); err != nil {
+		return err
+	}
 	upstream, err := p.Dialer.Dial(client)
 	if err != nil {
+		sendBYE(client)
 		return err
 	}
 	defer upstream.Close()
@@ -129,4 +134,18 @@ func (p *Proxy) Handle(client net.Conn) error {
 		Rewriter: p.Rewriter,
 	}
 	return s.Run()
+}
+
+func handshakeClient(client net.Conn) error {
+	tlsClient, ok := client.(*tls.Conn)
+	if !ok {
+		return nil
+	}
+	return tlsClient.Handshake()
+}
+
+func sendBYE(client net.Conn) {
+	_ = client.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
+	_, _ = client.Write([]byte("* BYE upstream unavailable\r\n"))
+	_ = client.SetWriteDeadline(time.Time{})
 }
