@@ -1,0 +1,62 @@
+# imap-shadow example configuration.
+# Copy to /etc/imap-shadow/config.toml and adjust.
+
+[listen]
+# Public IMAPS endpoint. Clients connect here.
+addr = "0.0.0.0:993"
+
+[acme]
+# HTTP-01 challenge server runs on :80 (Stalwart doesn't bind it).
+# This hostname must resolve to this host and :80 must be reachable
+# from the public internet during cert issuance and renewal.
+hostnames = ["mail.example.com"]
+email     = "admin@example.com"
+cache_dir = "/var/lib/imap-shadow/acme"
+http_addr = "0.0.0.0:80"
+# Optional: override the ACME directory (default: Let's Encrypt prod).
+# directory = "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+[upstream]
+# Default: plaintext IMAP on loopback to avoid double-TLS.
+addr = "127.0.0.1:143"
+tls  = false
+# If Stalwart is configured TLS-only, use:
+# addr            = "127.0.0.1:9993"
+# tls             = true
+# sni             = "mail.example.com"
+# tls_skip_verify = false
+
+[capability]
+# Capability tokens stripped from server responses before forwarding.
+# COMPRESS=DEFLATE: would force the proxy to inflate/deflate every frame.
+# REFERRAL: a client redirected to the backend host would bypass the proxy.
+# *_PLUS: channel-binding mechanisms break when TLS is terminated here.
+strip = [
+  "COMPRESS=DEFLATE",
+  "REFERRAL",
+  "AUTH=GSSAPI",
+  "AUTH=SCRAM-SHA-256-PLUS",
+  "AUTH=SCRAM-SHA-1-PLUS",
+]
+
+[namespace]
+# Path prefixes that mark the shared-folder namespace. These prefixes are
+# exempt from "hide_personal" — they remain visible.
+shared_prefixes = ["Shared Folders/", "Other Users/"]
+
+# --- Rules -------------------------------------------------------------
+# Each [[rules]] block applies to either an exact "user" or "*" (everyone).
+# Multiple matching rules stack: hide lists are unioned; hide_personal is
+# OR-ed. INBOX is hardcoded to never be hidden.
+
+# Hide some folders from everyone. Listing "Trash" also hides
+# "Trash/Old", "Trash/Old/2023", etc.
+[[rules]]
+user = "*"
+hide = ["Trash", "Archive/Legacy"]
+
+# Service account: hide every personal top-level folder except INBOX.
+# Shared Folders/... stays visible.
+[[rules]]
+user          = "newsletter-bot@example.com"
+hide_personal = true
