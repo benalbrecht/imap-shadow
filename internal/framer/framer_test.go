@@ -157,3 +157,22 @@ func TestLiteralTooLarge(t *testing.T) {
 		t.Errorf("got error %v want %v", err, ErrLiteralTooLarge)
 	}
 }
+
+type infiniteReader struct {
+	b byte
+}
+
+func (r infiniteReader) Read(p []byte) (n int, err error) {
+	for i := range p {
+		p[i] = r.b
+	}
+	return len(p), nil
+}
+
+func TestLineTooLong(t *testing.T) {
+	f := New(infiniteReader{'a'})
+	_, err := f.ReadLine()
+	if !errors.Is(err, ErrLineTooLong) {
+		t.Errorf("got error %v want %v", err, ErrLineTooLong)
+	}
+}
