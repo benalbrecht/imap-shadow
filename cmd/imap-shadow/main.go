@@ -44,6 +44,7 @@ func main() {
 			TLS:        cfg.Upstream.TLS,
 			SNI:        cfg.Upstream.SNI,
 			SkipVerify: cfg.Upstream.TLSSkipVerify,
+			ProxyProtocol: cfg.Upstream.ProxyProtocol,
 		},
 		Rewriter: capability.New(cfg.Capability.Strip),
 	}

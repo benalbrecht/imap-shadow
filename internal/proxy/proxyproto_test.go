@@ -12,6 +12,64 @@ import (
 	"github.com/pires/go-proxyproto"
 )
 
+func TestProxyHeaderAddrsIPv4(t *testing.T) {
+	src, dst, tp, err := proxyHeaderAddrs(
+		&net.TCPAddr{IP: net.ParseIP("203.0.113.10"), Port: 42424},
+		&net.TCPAddr{IP: net.ParseIP("192.0.2.5"), Port: 993},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tp != proxyproto.TCPv4 {
+		t.Fatalf("transport=%v", tp)
+	}
+	if src.(*net.TCPAddr).IP.To4() == nil || dst.(*net.TCPAddr).IP.To4() == nil {
+		t.Fatal("expected IPv4 addresses")
+	}
+}
+
+func TestProxyHeaderAddrsIPv6(t *testing.T) {
+	src, dst, tp, err := proxyHeaderAddrs(
+		&net.TCPAddr{IP: net.ParseIP("2001:db8::10"), Port: 42424},
+		&net.TCPAddr{IP: net.ParseIP("2001:db8::20"), Port: 993},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tp != proxyproto.TCPv6 {
+		t.Fatalf("transport=%v", tp)
+	}
+	if src.(*net.TCPAddr).IP.To4() != nil || dst.(*net.TCPAddr).IP.To4() != nil {
+		t.Fatal("expected IPv6 addresses")
+	}
+}
+
+func TestProxyHeaderAddrsMappedIPv4(t *testing.T) {
+	src, dst, tp, err := proxyHeaderAddrs(
+		&net.TCPAddr{IP: net.ParseIP("::ffff:203.0.113.10"), Port: 42424},
+		&net.TCPAddr{IP: net.ParseIP("::ffff:192.0.2.5"), Port: 993},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tp != proxyproto.TCPv4 {
+		t.Fatalf("transport=%v", tp)
+	}
+	if src.(*net.TCPAddr).IP.To4() == nil || dst.(*net.TCPAddr).IP.To4() == nil {
+		t.Fatal("expected normalized IPv4 addresses")
+	}
+}
+
+func TestProxyHeaderAddrsFamilyMismatch(t *testing.T) {
+	_, _, _, err := proxyHeaderAddrs(
+		&net.TCPAddr{IP: net.ParseIP("203.0.113.10"), Port: 42424},
+		&net.TCPAddr{IP: net.ParseIP("2001:db8::20"), Port: 993},
+	)
+	if err == nil {
+		t.Fatal("expected family mismatch error")
+	}
+}
+
 // realClientConn returns a connected net.Conn pair using a TCP loopback
 // listener so RemoteAddr/LocalAddr are real *net.TCPAddr values.
 func realClientConn(t *testing.T) (clientSide, proxySide net.Conn) {

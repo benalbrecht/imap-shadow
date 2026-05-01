@@ -8,6 +8,7 @@ package proxy
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -61,26 +62,57 @@ func (d *TCPDialer) Dial(client net.Conn) (net.Conn, error) {
 
 // writeProxyHeader emits a PROXY v2 header describing the client peer.
 func writeProxyHeader(upstream net.Conn, client net.Conn) error {
-	src := client.RemoteAddr()
-	dst := client.LocalAddr()
+	src, dst, tp, err := proxyHeaderAddrs(client.RemoteAddr(), client.LocalAddr())
+	if err != nil {
+		return err
+	}
 	hdr := &proxyproto.Header{
 		Version:           2,
 		Command:           proxyproto.PROXY,
-		TransportProtocol: transportFor(src),
+		TransportProtocol: tp,
 		SourceAddr:        src,
 		DestinationAddr:   dst,
 	}
-	_, err := hdr.WriteTo(upstream)
+	_, err = hdr.WriteTo(upstream)
 	return err
 }
 
-// transportFor returns the PROXY-protocol transport tag for the given
-// address, defaulting to TCPv4.
-func transportFor(a net.Addr) proxyproto.AddressFamilyAndProtocol {
-	if t, ok := a.(*net.TCPAddr); ok && t.IP.To4() == nil {
-		return proxyproto.TCPv6
+// proxyHeaderAddrs normalizes source/destination TCP addresses and returns
+// the matching PROXY-protocol transport tag.
+func proxyHeaderAddrs(srcRaw, dstRaw net.Addr) (net.Addr, net.Addr, proxyproto.AddressFamilyAndProtocol, error) {
+	src, ok := srcRaw.(*net.TCPAddr)
+	if !ok {
+		return nil, nil, 0, fmt.Errorf("proxy proto source is not TCP: %T", srcRaw)
 	}
-	return proxyproto.TCPv4
+	dst, ok := dstRaw.(*net.TCPAddr)
+	if !ok {
+		return nil, nil, 0, fmt.Errorf("proxy proto destination is not TCP: %T", dstRaw)
+	}
+	srcNorm := normalizeTCPAddr(src)
+	dstNorm := normalizeTCPAddr(dst)
+
+	srcV4 := srcNorm.IP.To4() != nil
+	dstV4 := dstNorm.IP.To4() != nil
+	switch {
+	case srcV4 && dstV4:
+		return srcNorm, dstNorm, proxyproto.TCPv4, nil
+	case !srcV4 && !dstV4:
+		return srcNorm, dstNorm, proxyproto.TCPv6, nil
+	default:
+		return nil, nil, 0, fmt.Errorf("proxy proto address family mismatch: src=%s dst=%s", srcNorm, dstNorm)
+	}
+}
+
+func normalizeTCPAddr(a *net.TCPAddr) *net.TCPAddr {
+	if a == nil {
+		return &net.TCPAddr{}
+	}
+	n := *a
+	if ip4 := n.IP.To4(); ip4 != nil {
+		n.IP = ip4
+		n.Zone = ""
+	}
+	return &n
 }
 
 // Proxy ties together the listener, dialer and per-connection session.

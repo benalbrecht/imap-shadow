@@ -20,6 +20,8 @@ http_addr = "0.0.0.0:80"
 # Default: plaintext IMAP on loopback to avoid double-TLS.
 addr = "127.0.0.1:143"
 tls  = false
+# Enable only if upstream expects PROXY protocol v2.
+proxy_protocol = false
 # If Stalwart is configured TLS-only, use:
 # addr            = "127.0.0.1:9993"
 # tls             = true
