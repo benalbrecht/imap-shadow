@@ -63,43 +63,18 @@ func (f *Framer) ReadLine() ([]byte, error) {
 			return out, nil
 		}
 		if n > 0 {
-			// Protect against massive literal size claims with no backing data
-			// by reading the payload incrementally. This avoids an instant panic
-			// or OOM on make([]byte, n) for a maliciously large n.
-
-			// We cap the initial pre-allocation to 64KB, and let append()
-			// grow the slice as needed if the payload is legitimately large
-			// and data actually arrives.
-			const maxPrealloc = 65536
-			capN := n
-			if capN > maxPrealloc {
-				capN = maxPrealloc
-			}
-
-			payloadOut := make([]byte, 0, capN)
 			lr := io.LimitReader(f.br, int64(n))
-
-			// Read the literal stream into payloadOut.
-			for {
-				var buf [maxPrealloc]byte
-				r, err := lr.Read(buf[:])
-				if r > 0 {
-					payloadOut = append(payloadOut, buf[:r]...)
-				}
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						break
-					}
-					return out, err
-				}
+			payload, err := io.ReadAll(lr)
+			if err != nil {
+				// io.ReadAll shouldn't return EOF (it swallows it normally) but we
+				// keep err checks just in case the underlying reader fails differently.
+				return out, err
 			}
-
-			// Check if we actually read `n` bytes
-			if len(payloadOut) < n {
+			// If we didn't read exactly n bytes, we hit EOF early.
+			if len(payload) < n {
 				return out, io.ErrUnexpectedEOF
 			}
-
-			out = append(out, payloadOut...)
+			out = append(out, payload...)
 		}
 		// loop: read the next chunk that continues this logical line
 	}
