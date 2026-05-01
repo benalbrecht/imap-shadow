@@ -166,7 +166,5 @@ func UsernameFromBearer(b64 []byte) (string, error) {
 
 // zero overwrites the slice with NUL bytes.
 func zero(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	clear(b)
 }
