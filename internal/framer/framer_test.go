@@ -148,3 +148,12 @@ func TestReadLineReturnsCopySafeForMutation(t *testing.T) {
 		t.Errorf("got %q (mutation of first read leaked into second)", second)
 	}
 }
+
+func TestLiteralTooLarge(t *testing.T) {
+	in := "a1 LOGIN {9999999999}\r\n"
+	f := New(strings.NewReader(in))
+	_, err := f.ReadLine()
+	if !errors.Is(err, ErrLiteralTooLarge) {
+		t.Errorf("got error %v want %v", err, ErrLiteralTooLarge)
+	}
+}

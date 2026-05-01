@@ -27,6 +27,11 @@ import (
 	"strconv"
 )
 
+// ErrLiteralTooLarge is returned when a literal exceeds the maximum allowed size.
+var ErrLiteralTooLarge = errors.New("framer: literal too large")
+
+const maxLiteralSize = 256 * 1024 * 1024 // 256 MiB
+
 // Framer reads logical IMAP lines from an underlying byte stream.
 type Framer struct {
 	br *bufio.Reader
@@ -63,6 +68,9 @@ func (f *Framer) ReadLine() ([]byte, error) {
 			return out, nil
 		}
 		if n > 0 {
+			if n > maxLiteralSize {
+				return out, ErrLiteralTooLarge
+			}
 			payload := make([]byte, n)
 			if _, err := io.ReadFull(f.br, payload); err != nil {
 				if errors.Is(err, io.EOF) {
