@@ -40,10 +40,10 @@ func main() {
 	// Build the proxy with current rules.
 	p := &proxy.Proxy{
 		Dialer: &proxy.TCPDialer{
-			Addr:          cfg.Upstream.Addr,
-			TLS:           cfg.Upstream.TLS,
-			SNI:           cfg.Upstream.SNI,
-			SkipVerify:    cfg.Upstream.TLSSkipVerify,
+			Addr:       cfg.Upstream.Addr,
+			TLS:        cfg.Upstream.TLS,
+			SNI:        cfg.Upstream.SNI,
+			SkipVerify: cfg.Upstream.TLSSkipVerify,
 			ProxyProtocol: cfg.Upstream.ProxyProtocol,
 		},
 		Rewriter: capability.New(cfg.Capability.Strip),

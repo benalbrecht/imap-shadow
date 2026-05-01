@@ -5,8 +5,8 @@
 // client by removing tokens the proxy can't safely transit. Two forms are
 // recognised:
 //
-//   - CAPABILITY <token> <token> ...
-//   - OK [CAPABILITY <token> <token> ...] <free text>
+//	* CAPABILITY <token> <token> ...
+//	* OK [CAPABILITY <token> <token> ...] <free text>
 //
 // Comparison is case-insensitive on the whole token (so "AUTH=PLAIN" with
 // strip = "PLAIN" is *not* removed; the strip list must contain whole
