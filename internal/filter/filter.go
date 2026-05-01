@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/emersion/go-imap/utf7"
 	"github.com/benalbrecht/imap-shadow/internal/rules"
+	"github.com/emersion/go-imap/utf7"
 )
 
 // Filter applies a single Matcher to incoming server lines.

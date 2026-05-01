@@ -182,10 +182,7 @@ func splitMechIR(rest []byte) (mech, ir string) {
 }
 
 func trimCRLF(b []byte) []byte {
-	for len(b) > 0 && (b[len(b)-1] == '\r' || b[len(b)-1] == '\n') {
-		b = b[:len(b)-1]
-	}
-	return b
+	return bytes.TrimRight(b, "\r\n")
 }
 
 // dup returns a fresh copy so the SASL package can safely zero it.
