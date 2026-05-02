@@ -91,14 +91,24 @@ func (f *Framer) ReadLine() ([]byte, error) {
 			if len(out)+n > maxLineSize {
 				return out, ErrLineTooLong
 			}
-			payload := make([]byte, n)
-			if _, err := io.ReadFull(f.br, payload); err != nil {
-				if errors.Is(err, io.EOF) {
-					return out, io.ErrUnexpectedEOF
+			rem := n
+			for rem > 0 {
+				chunkSize := rem
+				if chunkSize > 32768 {
+					chunkSize = 32768
 				}
-				return out, err
+				start := len(out)
+				out = append(out, make([]byte, chunkSize)...)
+				nr, err := io.ReadFull(f.br, out[start:start+chunkSize])
+				out = out[:start+nr]
+				rem -= nr
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						return out, io.ErrUnexpectedEOF
+					}
+					return out, err
+				}
 			}
-			out = append(out, payload...)
 		}
 		// loop: read the next chunk that continues this logical line
 	}

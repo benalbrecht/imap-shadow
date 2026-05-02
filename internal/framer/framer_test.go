@@ -176,3 +176,14 @@ func TestLineTooLong(t *testing.T) {
 		t.Errorf("got error %v want %v", err, ErrLineTooLong)
 	}
 }
+
+func TestLiteralAllocationAttack(t *testing.T) {
+	// A literal size declaration followed by EOF should fail quickly with ErrUnexpectedEOF,
+	// and shouldn't panic with OOM even for large sizes.
+	in := "a1 LOGIN {100000000}\r\n"
+	f := New(strings.NewReader(in))
+	_, err := f.ReadLine()
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("got error %v want %v", err, io.ErrUnexpectedEOF)
+	}
+}
