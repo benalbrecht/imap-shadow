@@ -21,7 +21,16 @@ type Config struct {
 	Upstream   Upstream   `toml:"upstream"`
 	Capability Capability `toml:"capability"`
 	Namespace  Namespace  `toml:"namespace"`
+	Policy     Policy     `toml:"policy"`
 	Rules      []Rule     `toml:"rules"`
+}
+
+// Policy holds proxy-wide behavioural toggles unrelated to per-user rules.
+type Policy struct {
+	// BlockCrossAccountMoves rejects MOVE / UID MOVE commands whose
+	// source and destination mailboxes belong to different accounts.
+	// COPY is never blocked. See internal/movegate.
+	BlockCrossAccountMoves bool `toml:"block_cross_account_moves"`
 }
 
 // Listen controls the public IMAPS endpoint.

@@ -18,6 +18,7 @@ import (
 	"github.com/benalbrecht/imap-shadow/internal/capability"
 	"github.com/benalbrecht/imap-shadow/internal/filter"
 	"github.com/benalbrecht/imap-shadow/internal/framer"
+	"github.com/benalbrecht/imap-shadow/internal/movegate"
 	"github.com/benalbrecht/imap-shadow/internal/rules"
 )
 
@@ -31,10 +32,19 @@ type Session struct {
 	// the upstream confirms the authenticated user. Useful for logging.
 	// Never called with an empty username.
 	OnAuth func(user string)
+	// BlockCrossAccountMoves enables MOVE / UID MOVE gating that rejects
+	// commands whose source and target mailboxes belong to different
+	// accounts (see internal/movegate). COPY is always forwarded.
+	BlockCrossAccountMoves bool
+	// SharedPrefixes is needed when BlockCrossAccountMoves is true so the
+	// gate can derive per-mailbox account identity. Identical shape to
+	// rules.SharedPrefixes (each entry must end in "/").
+	SharedPrefixes []string
 
 	mu      sync.Mutex
 	tracker authtrack.Tracker
-	filter  *filter.Filter // nil until authenticated
+	filter  *filter.Filter   // nil until authenticated
+	gate    *movegate.Tracker // nil unless BlockCrossAccountMoves
 }
 
 // Run starts the bidirectional bridge and returns when either side closes
@@ -42,6 +52,9 @@ type Session struct {
 // is unblocked by closing the underlying streams (if they happen to be
 // io.Closers).
 func (s *Session) Run() error {
+	if s.BlockCrossAccountMoves {
+		s.gate = &movegate.Tracker{SharedPrefixes: s.SharedPrefixes}
+	}
 	errc := make(chan error, 2)
 
 	go func() { errc <- s.copyClientToServer() }()
@@ -72,8 +85,17 @@ func (s *Session) copyClientToServer() error {
 		if len(line) > 0 {
 			s.mu.Lock()
 			s.tracker.HandleClientLine(line)
+			var d movegate.Decision
+			if s.gate != nil {
+				d = s.gate.HandleClientLine(line)
+			}
 			s.mu.Unlock()
-			if _, werr := s.Server.Write(line); werr != nil {
+			if d.Block {
+				resp := []byte(d.Tag + " NO " + d.Reason + "\r\n")
+				if _, werr := s.Client.Write(resp); werr != nil {
+					return werr
+				}
+			} else if _, werr := s.Server.Write(line); werr != nil {
 				return werr
 			}
 		}
@@ -90,6 +112,9 @@ func (s *Session) copyServerToClient() error {
 		if len(line) > 0 {
 			s.mu.Lock()
 			committed := s.tracker.HandleServerLine(line)
+			if s.gate != nil {
+				s.gate.HandleServerLine(line)
+			}
 			user := ""
 			if committed {
 				user = s.tracker.User()

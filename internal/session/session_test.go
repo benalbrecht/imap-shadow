@@ -237,6 +237,102 @@ func TestAuthSnoopExtractsUserViaPLAIN(t *testing.T) {
 	}
 }
 
+func TestBlockCrossAccountMoveSendsNOAndDoesNotForward(t *testing.T) {
+	r := &rules.Rules{SharedPrefixes: []string{"Shared Folders/"}}
+	rw := capability.New(nil)
+	clientSide, proxyClient := pair()
+	proxyServer, serverSide := pair()
+	done := make(chan struct{})
+	s := &Session{
+		Client:                 proxyClient,
+		Server:                 proxyServer,
+		Rules:                  r,
+		Rewriter:               rw,
+		BlockCrossAccountMoves: true,
+		SharedPrefixes:         r.SharedPrefixes,
+	}
+	go func() { _ = s.Run(); close(done) }()
+	t.Cleanup(func() {
+		clientSide.Close()
+		serverSide.Close()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("session did not exit")
+		}
+	})
+	cr := newLineReader(clientSide)
+	sr := newLineReader(serverSide)
+
+	// 1. SELECT a shared mailbox; server confirms.
+	go func() {
+		_, _ = clientSide.Write([]byte("s1 SELECT \"Shared Folders/foo@bar.com/INBOX\"\r\n"))
+	}()
+	if _, err := sr.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _, _ = serverSide.Write([]byte("s1 OK SELECT done\r\n")) }()
+	if _, err := cr.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. MOVE to a different shared account: must NOT reach the server,
+	//    client must receive a tagged NO.
+	go func() {
+		_, _ = clientSide.Write([]byte("m1 MOVE 1 \"Shared Folders/baz@bar.com/INBOX\"\r\n"))
+	}()
+	got, err := cr.ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "m1 NO ") {
+		t.Fatalf("client got %q; expected tagged NO for m1", got)
+	}
+
+	// 3. Follow-up NOOP must reach the server (proves MOVE was dropped,
+	//    not just stuck in the pipeline).
+	go func() { _, _ = clientSide.Write([]byte("n1 NOOP\r\n")) }()
+	got, err = sr.ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "n1 NOOP") {
+		t.Fatalf("server saw %q; expected n1 NOOP after blocked MOVE", got)
+	}
+}
+
+func TestBlockCrossAccountMoveDisabledByDefault(t *testing.T) {
+	// With BlockCrossAccountMoves false (the default), a cross-account
+	// MOVE must be forwarded untouched.
+	r := &rules.Rules{SharedPrefixes: []string{"Shared Folders/"}}
+	rw := capability.New(nil)
+	client, server, _ := runSession(t, r, rw)
+	cr := newLineReader(client)
+	sr := newLineReader(server)
+
+	go func() {
+		_, _ = client.Write([]byte("s1 SELECT \"Shared Folders/foo@bar.com/INBOX\"\r\n"))
+	}()
+	if _, err := sr.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _, _ = server.Write([]byte("s1 OK\r\n")) }()
+	if _, err := cr.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		_, _ = client.Write([]byte("m1 MOVE 1 \"Shared Folders/baz@bar.com/INBOX\"\r\n"))
+	}()
+	got, err := sr.ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "m1 MOVE") {
+		t.Fatalf("server got %q; MOVE must pass through when gate is disabled", got)
+	}
+}
+
 func TestSessionExitsOnClientClose(t *testing.T) {
 	r := &rules.Rules{}
 	rw := capability.New(nil)

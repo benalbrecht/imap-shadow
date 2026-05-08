@@ -46,6 +46,14 @@ strip = [
 # exempt from "hide_personal" — they remain visible.
 shared_prefixes = ["Shared Folders/", "Other Users/"]
 
+[policy]
+# Reject MOVE / UID MOVE between different accounts (e.g. between two
+# shared accounts, or between a personal mailbox and a shared one).
+# COPY is always permitted. Aim: prevent accidental drag-and-drop moves
+# in webmail UIs that some IMAP servers (Stalwart) allow at the protocol
+# level even though the user lacks delete rights on the source.
+block_cross_account_moves = false
+
 # --- Rules -------------------------------------------------------------
 # Each [[rules]] block applies to either an exact "user" or "*" (everyone).
 # Multiple matching rules stack: hide lists are unioned.

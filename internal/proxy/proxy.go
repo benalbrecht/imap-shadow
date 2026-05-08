@@ -126,6 +126,9 @@ type Proxy struct {
 	// OnAuth, if set, is invoked once per session when the upstream
 	// confirms the authenticated user. Intended for logging.
 	OnAuth func(client net.Conn, user string)
+	// BlockCrossAccountMoves enables MOVE / UID MOVE gating in every
+	// session this proxy spawns.
+	BlockCrossAccountMoves bool
 
 	rules atomic.Pointer[rules.Rules]
 }
@@ -162,11 +165,16 @@ func (p *Proxy) Handle(client net.Conn) error {
 	}
 	defer upstream.Close()
 
+	r := p.Rules()
 	s := &session.Session{
-		Client:   client,
-		Server:   upstream,
-		Rules:    p.Rules(),
-		Rewriter: p.Rewriter,
+		Client:                 client,
+		Server:                 upstream,
+		Rules:                  r,
+		Rewriter:               p.Rewriter,
+		BlockCrossAccountMoves: p.BlockCrossAccountMoves,
+	}
+	if r != nil {
+		s.SharedPrefixes = r.SharedPrefixes
 	}
 	if p.OnAuth != nil {
 		s.OnAuth = func(user string) { p.OnAuth(client, user) }

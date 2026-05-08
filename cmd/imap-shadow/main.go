@@ -50,6 +50,7 @@ func main() {
 		OnAuth: func(client net.Conn, user string) {
 			log.Printf("auth ok: client=%s user=%s", client.RemoteAddr(), user)
 		},
+		BlockCrossAccountMoves: cfg.Policy.BlockCrossAccountMoves,
 	}
 	p.SetRules(cfg.CompileRules())
 
