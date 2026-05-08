@@ -47,6 +47,9 @@ func main() {
 			ProxyProtocol: cfg.Upstream.ProxyProtocol,
 		},
 		Rewriter: capability.New(cfg.Capability.Strip),
+		OnAuth: func(client net.Conn, user string) {
+			log.Printf("auth ok: client=%s user=%s", client.RemoteAddr(), user)
+		},
 	}
 	p.SetRules(cfg.CompileRules())
 

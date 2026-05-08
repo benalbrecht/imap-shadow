@@ -123,6 +123,9 @@ func normalizeTCPAddr(a *net.TCPAddr) *net.TCPAddr {
 type Proxy struct {
 	Dialer   Dialer
 	Rewriter *capability.Rewriter
+	// OnAuth, if set, is invoked once per session when the upstream
+	// confirms the authenticated user. Intended for logging.
+	OnAuth func(client net.Conn, user string)
 
 	rules atomic.Pointer[rules.Rules]
 }
@@ -164,6 +167,9 @@ func (p *Proxy) Handle(client net.Conn) error {
 		Server:   upstream,
 		Rules:    p.Rules(),
 		Rewriter: p.Rewriter,
+	}
+	if p.OnAuth != nil {
+		s.OnAuth = func(user string) { p.OnAuth(client, user) }
 	}
 	return s.Run()
 }

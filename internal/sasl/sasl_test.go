@@ -116,7 +116,39 @@ func TestUsernameFromBearer(t *testing.T) {
 			want:    "alice@example.com",
 		},
 		{
-			name:    "no user field",
+			// RFC 7628 §3.1: identity lives in the GS2 "a=" authzid.
+			// Roundcube/Kolab sends this exact form with no "user=" field.
+			name:    "oauthbearer rfc7628 gs2 a= only",
+			decoded: "n,a=alice@example.com,\x01host=mail.example.com\x01port=143\x01auth=Bearer abc\x01\x01",
+			want:    "alice@example.com",
+		},
+		{
+			name:    "oauthbearer rfc7628 gs2 a= with channel binding y",
+			decoded: "y,a=bob@example.com,\x01auth=Bearer xyz\x01\x01",
+			want:    "bob@example.com",
+		},
+		{
+			// Observed Roundcube payload in the wild: no \x01 separators,
+			// the auth=Bearer field is comma-glued to the GS2 header.
+			// The saslname must still terminate at the first unescaped ",".
+			name:    "oauthbearer roundcube comma-only no SOH",
+			decoded: "n,a=foo@example.com,auth=Bearer eyJabcdef",
+			want:    "foo@example.com",
+		},
+		{
+			// Saslname containing an escaped comma per RFC 5801: =2C must
+			// decode to "," and must NOT terminate the saslname.
+			name:    "oauthbearer saslname with escaped comma",
+			decoded: "n,a=last=2Cfirst@example.com,\x01auth=Bearer abc\x01\x01",
+			want:    "last,first@example.com",
+		},
+		{
+			name:    "no identity at all",
+			decoded: "n,,\x01auth=Bearer abc\x01\x01",
+			wantErr: true,
+		},
+		{
+			name:    "no user field and no gs2",
 			decoded: "auth=Bearer abc\x01\x01",
 			wantErr: true,
 		},

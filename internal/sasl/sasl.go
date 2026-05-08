@@ -126,10 +126,18 @@ func UsernameFromPlain(b64 []byte) (string, error) {
 }
 
 // UsernameFromBearer decodes a base64 XOAUTH2 / OAUTHBEARER payload and
-// returns the username carried in the "user=<value>\x01" key/value pair.
-// Both wire formats use this same key, so a single extractor covers them.
-// The bearer-token region of the decoded buffer and the entire base64 input
-// are zeroed before return.
+// returns the authentication identity. Two wire forms are supported:
+//
+//   - XOAUTH2 (Google) and the non-standard OAUTHBEARER variant some
+//     clients send, both of which carry "user=<value>\x01" as one of the
+//     \x01-separated fields.
+//   - RFC 7628 OAUTHBEARER, where the identity lives in the GS2 header
+//     authzid as "a=<value>" inside the FIRST field (the GS2 header has
+//     the shape "<cb-flag>,a=<saslname>,"). Roundcube/Kolab uses this.
+//
+// The "user=" form takes precedence when both are present; otherwise the
+// GS2 "a=" authzid is used. The bearer-token region of the decoded buffer
+// and the entire base64 input are zeroed before return.
 func UsernameFromBearer(b64 []byte) (string, error) {
 	defer zero(b64)
 	dec := make([]byte, base64.StdEncoding.DecodedLen(len(b64)))
@@ -139,18 +147,25 @@ func UsernameFromBearer(b64 []byte) (string, error) {
 	}
 	dec = dec[:n]
 	defer zero(dec)
-	// fields are \x01-separated; locate one that begins with "user=".
 	const sep = '\x01'
-	const key = "user="
+	const userKey = "user="
+
+	// Walk \x01-separated fields. Remember the first field separately
+	// because that is where the GS2 header lives in OAUTHBEARER.
+	var gs2 []byte
+	first := true
 	for i := 0; i < len(dec); {
-		// find end of this field
 		end := i
 		for end < len(dec) && dec[end] != sep {
 			end++
 		}
 		field := dec[i:end]
-		if len(field) >= len(key) && string(field[:len(key)]) == key {
-			val := field[len(key):]
+		if first {
+			gs2 = field
+			first = false
+		}
+		if len(field) >= len(userKey) && string(field[:len(userKey)]) == userKey {
+			val := field[len(userKey):]
 			if len(val) == 0 {
 				return "", errors.New("bearer: empty user value")
 			}
@@ -161,7 +176,86 @@ func UsernameFromBearer(b64 []byte) (string, error) {
 		}
 		i = end + 1
 	}
-	return "", errors.New("bearer: no user= field")
+	if u := authzidFromGS2(gs2); u != "" {
+		return u, nil
+	}
+	return "", errors.New("bearer: no user= field and no GS2 a= authzid")
+}
+
+// authzidFromGS2 extracts the saslname from a GS2 header of the form
+// "<cb-flag>,a=<saslname>," (RFC 5801 §4). Returns "" when no authzid is
+// present (e.g. "n,," / "y,,") or when the input does not look like a GS2
+// header at all. Per RFC 5801, the saslname uses "=2C" / "=3D" escapes for
+// "," and "=" respectively; those are decoded here.
+func authzidFromGS2(field []byte) string {
+	// Must start with cb-flag ("n", "y", or "p=...") followed by ",".
+	if len(field) < 2 {
+		return ""
+	}
+	switch field[0] {
+	case 'n', 'y':
+		if field[1] != ',' {
+			return ""
+		}
+	case 'p':
+		// p=<cb-name>,
+		if len(field) < 3 || field[1] != '=' {
+			return ""
+		}
+	default:
+		return ""
+	}
+	comma := bytes.IndexByte(field, ',')
+	if comma < 0 || comma+1 >= len(field) {
+		return ""
+	}
+	rest := field[comma+1:] // either "" or "a=<saslname>,..."
+	if len(rest) < 2 || rest[0] != 'a' || rest[1] != '=' {
+		return ""
+	}
+	raw := rest[2:]
+	// The saslname terminates at the first unescaped "," (the comma that
+	// closes the GS2 header). Within the saslname, "," is escaped as
+	// "=2C" per RFC 5801 §4 and so does NOT terminate.
+	end := 0
+	for end < len(raw) {
+		if raw[end] == ',' {
+			break
+		}
+		if raw[end] == '=' && end+2 < len(raw) {
+			// skip "=2C" / "=3D" escape, do not split here
+			end += 3
+			continue
+		}
+		end++
+	}
+	raw = raw[:end]
+	if len(raw) == 0 {
+		return ""
+	}
+	return decodeSaslname(raw)
+}
+
+// decodeSaslname unescapes the RFC 5801 saslname escapes "=2C" -> "," and
+// "=3D" -> "=".
+func decodeSaslname(b []byte) string {
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		if b[i] == '=' && i+2 < len(b) {
+			switch {
+			case b[i+1] == '2' && (b[i+2] == 'C' || b[i+2] == 'c'):
+				out = append(out, ',')
+				i += 2
+				continue
+			case b[i+1] == '3' && (b[i+2] == 'D' || b[i+2] == 'd'):
+				out = append(out, '=')
+				i += 2
+				continue
+			}
+		}
+		out = append(out, b[i])
+	}
+	return string(out)
 }
 
 // zero overwrites the slice with NUL bytes.

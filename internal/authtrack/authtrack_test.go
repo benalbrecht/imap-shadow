@@ -86,6 +86,38 @@ func TestAuthenticateOAUTHBEARERMultiLine(t *testing.T) {
 	}
 }
 
+func TestAuthenticateOAUTHBEARERRoundcubeStyle(t *testing.T) {
+	// Real Roundcube/Kolab OAUTHBEARER per RFC 7628: the authentication
+	// identity is in the GS2 "a=" authzid; there is no "user=" field.
+	tr := &Tracker{}
+	tr.HandleClientLine([]byte("A0001 AUTHENTICATE OAUTHBEARER\r\n"))
+	tr.HandleServerLine([]byte("+ \r\n"))
+	payload := b64("n,a=alice@example.com,\x01host=mail.example.com\x01port=143\x01auth=Bearer xyz\x01\x01")
+	tr.HandleClientLine([]byte(payload + "\r\n"))
+	committed := tr.HandleServerLine([]byte("A0001 OK [CAPABILITY IMAP4rev2 IMAP4rev1] Authentication successful\r\n"))
+	if !committed {
+		t.Fatalf("expected committed=true on tagged OK")
+	}
+	if tr.User() != "alice@example.com" {
+		t.Errorf("user=%q want %q", tr.User(), "alice@example.com")
+	}
+}
+
+func TestAuthenticateOAUTHBEARERRoundcubeStyleSASLIR(t *testing.T) {
+	// Roundcube actually sends SASL-IR (RFC 4959): the base64 payload
+	// rides on the same line as AUTHENTICATE, no "+" continuation.
+	tr := &Tracker{}
+	payload := b64("n,a=alice@example.com,\x01host=mail.example.com\x01port=143\x01auth=Bearer xyz\x01\x01")
+	tr.HandleClientLine([]byte("A0001 AUTHENTICATE OAUTHBEARER " + payload + "\r\n"))
+	committed := tr.HandleServerLine([]byte("A0001 OK [CAPABILITY IMAP4rev2 IMAP4rev1] Authentication successful\r\n"))
+	if !committed {
+		t.Fatalf("expected committed=true on tagged OK")
+	}
+	if tr.User() != "alice@example.com" {
+		t.Errorf("user=%q want %q", tr.User(), "alice@example.com")
+	}
+}
+
 func TestAuthenticateClientCancellation(t *testing.T) {
 	// During multi-line AUTHENTICATE the client may send "*" to cancel.
 	// State must reset.

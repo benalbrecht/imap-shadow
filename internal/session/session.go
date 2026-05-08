@@ -27,6 +27,10 @@ type Session struct {
 	Server   io.ReadWriter
 	Rules    *rules.Rules
 	Rewriter *capability.Rewriter
+	// OnAuth, if non-nil, is invoked once for the session at the moment
+	// the upstream confirms the authenticated user. Useful for logging.
+	// Never called with an empty username.
+	OnAuth func(user string)
 
 	mu      sync.Mutex
 	tracker authtrack.Tracker
@@ -78,11 +82,18 @@ func (s *Session) copyServerToClient() error {
 		if len(line) > 0 {
 			s.mu.Lock()
 			committed := s.tracker.HandleServerLine(line)
-			if committed && s.Rules != nil {
-				s.filter = filter.New(s.Rules.For(s.tracker.User()))
+			user := ""
+			if committed {
+				user = s.tracker.User()
+				if s.Rules != nil {
+					s.filter = filter.New(s.Rules.For(user))
+				}
 			}
 			fl := s.filter
 			s.mu.Unlock()
+			if committed && user != "" && s.OnAuth != nil {
+				s.OnAuth(user)
+			}
 
 			if s.Rewriter != nil {
 				line = s.Rewriter.Rewrite(line)
