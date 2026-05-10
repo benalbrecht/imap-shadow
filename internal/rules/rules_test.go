@@ -5,10 +5,14 @@ package rules
 
 import "testing"
 
+func boolPtr(v bool) *bool {
+	return &v
+}
+
 func TestINBOXIsNeverHidden(t *testing.T) {
 	r := &Rules{
 		Users: []UserRule{
-			{User: "*", Hide: []string{"INBOX"}, HidePersonal: true},
+			{User: "*", Hide: []string{"INBOX"}, HidePersonal: boolPtr(true)},
 		},
 	}
 	m := r.For("alice@example.com")
@@ -88,7 +92,7 @@ func TestStackingUnionsHideAndORsPersonal(t *testing.T) {
 		SharedPrefixes: []string{"Shared Folders/"},
 		Users: []UserRule{
 			{User: "*", Hide: []string{"Trash"}},
-			{User: "bob", Hide: []string{"Archive"}, HidePersonal: true},
+			{User: "bob", Hide: []string{"Archive"}, HidePersonal: boolPtr(true)},
 		},
 	}
 	m := r.For("bob")
@@ -110,7 +114,7 @@ func TestHidePersonalDoesNotAffectSharedNamespace(t *testing.T) {
 	r := &Rules{
 		SharedPrefixes: []string{"Shared Folders/", "Other Users/"},
 		Users: []UserRule{
-			{User: "newsletter-bot", HidePersonal: true},
+			{User: "newsletter-bot", HidePersonal: boolPtr(true)},
 		},
 	}
 	m := r.For("newsletter-bot")
@@ -151,5 +155,21 @@ func TestEmptyRulesSafeToUse(t *testing.T) {
 	m := r.For("anyone")
 	if m.ShouldHide("Trash") {
 		t.Error("empty rules must not hide anything")
+	}
+}
+
+func TestExactUserCanDisableWildcardHidePersonal(t *testing.T) {
+	r := &Rules{
+		SharedPrefixes: []string{"Shared Folders/"},
+		Users: []UserRule{
+			{User: "*", HidePersonal: boolPtr(true)},
+			{User: "alice", HidePersonal: boolPtr(false)},
+		},
+	}
+	if r.For("bob").ShouldHide("Sent") != true {
+		t.Error("bob must inherit wildcard hide_personal=true")
+	}
+	if r.For("alice").ShouldHide("Sent") {
+		t.Error("alice must override wildcard hide_personal=true with false")
 	}
 }

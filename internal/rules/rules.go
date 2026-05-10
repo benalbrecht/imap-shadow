@@ -14,7 +14,9 @@
 //   - HidePersonal hides every name that is not under any of
 //     SharedPrefixes — except INBOX.
 //   - When several user rules match (exact user name and the "*"
-//     wildcard), their Hide lists are unioned and HidePersonal is OR-ed.
+//     wildcard), their Hide lists are unioned.
+//   - HidePersonal defaults from wildcard rules, but any exact-user
+//     HidePersonal entries override the wildcard value.
 //   - With no matching rule, nothing is hidden.
 package rules
 
@@ -37,8 +39,8 @@ type UserRule struct {
 	User string
 	// Hide lists mailbox names to hide; cascades to descendants.
 	Hide []string
-	// HidePersonal hides every non-shared, non-INBOX mailbox.
-	HidePersonal bool
+	// HidePersonal hides every non-shared, non-INBOX mailbox when non-nil.
+	HidePersonal *bool
 }
 
 // Matcher is the per-user compiled form, suitable for hot-path lookups.
@@ -51,14 +53,28 @@ type Matcher struct {
 // For returns a Matcher with all rules applicable to user merged in.
 func (r *Rules) For(user string) *Matcher {
 	m := &Matcher{sharedPrefixes: r.SharedPrefixes}
+	baseHidePersonal := false
+	exactHasHidePersonal := false
+	exactHidePersonal := false
 	for _, ur := range r.Users {
 		if ur.User != "*" && ur.User != user {
 			continue
 		}
 		m.hide = append(m.hide, ur.Hide...)
-		if ur.HidePersonal {
-			m.hidePersonal = true
+		if ur.HidePersonal == nil {
+			continue
 		}
+		if ur.User == "*" {
+			baseHidePersonal = baseHidePersonal || *ur.HidePersonal
+			continue
+		}
+		exactHasHidePersonal = true
+		exactHidePersonal = exactHidePersonal || *ur.HidePersonal
+	}
+	if exactHasHidePersonal {
+		m.hidePersonal = exactHidePersonal
+	} else {
+		m.hidePersonal = baseHidePersonal
 	}
 	return m
 }

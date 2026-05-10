@@ -48,17 +48,20 @@ shared_prefixes = ["Shared Folders/", "Other Users/"]
 
 # --- Rules -------------------------------------------------------------
 # Each [[rules]] block applies to either an exact "user" or "*" (everyone).
-# Multiple matching rules stack: hide lists are unioned; hide_personal is
-# OR-ed. INBOX is hardcoded to never be hidden.
+# Multiple matching rules stack: hide lists are unioned.
+# hide_personal defaults from "*" rules; exact-user hide_personal values
+# override that default (both wildcard and exact values are OR-ed within
+# their own group). INBOX is hardcoded to never be hidden.
 
 # Hide some folders from everyone. Listing "Trash" also hides
 # "Trash/Old", "Trash/Old/2023", etc.
 [[rules]]
 user = "*"
 hide = ["Trash", "Archive/Legacy"]
+hide_personal = true
 
-# Service account: hide every personal top-level folder except INBOX.
-# Shared Folders/... stays visible.
+# Whitelist: this user keeps personal folders visible despite global
+# hide_personal=true above.
 [[rules]]
 user          = "newsletter-bot@example.com"
-hide_personal = true
+hide_personal = false

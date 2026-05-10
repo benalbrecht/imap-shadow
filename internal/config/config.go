@@ -63,7 +63,7 @@ type Namespace struct {
 type Rule struct {
 	User         string   `toml:"user"`
 	Hide         []string `toml:"hide"`
-	HidePersonal bool     `toml:"hide_personal"`
+	HidePersonal *bool    `toml:"hide_personal"`
 }
 
 // Load parses the TOML file at path and applies safe defaults.

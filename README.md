@@ -48,8 +48,15 @@ Rule semantics:
 
 `INBOX` is hardcoded to never be hidden.
 
-When several rules match the same user, all `hide` lists are unioned and
-`hide_personal` is OR-ed. Rule order is irrelevant.
+When several rules match the same user, all `hide` lists are unioned.
+
+`hide_personal` uses wildcard default + exact-user override semantics:
+- matching `user = "*"` rules provide the default (OR-ed together),
+- if any exact-user rules set `hide_personal`, those exact-user values
+  override the wildcard default (also OR-ed together).
+
+This lets you set `hide_personal = true` globally and explicitly whitelist
+users with `hide_personal = false`.
 
 ## Build
 

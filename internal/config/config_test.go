@@ -84,7 +84,7 @@ func TestLoadParsesAllSections(t *testing.T) {
 	if c.Rules[0].User != "*" || len(c.Rules[0].Hide) != 2 {
 		t.Errorf("rules[0]=%+v", c.Rules[0])
 	}
-	if c.Rules[1].User != "newsletter-bot@example.com" || !c.Rules[1].HidePersonal {
+	if c.Rules[1].User != "newsletter-bot@example.com" || c.Rules[1].HidePersonal == nil || !*c.Rules[1].HidePersonal {
 		t.Errorf("rules[1]=%+v", c.Rules[1])
 	}
 }
@@ -145,5 +145,35 @@ addr = "127.0.0.1:143"
 	}
 	if c.ACME.HTTPAddr == "" {
 		t.Error("acme.http_addr should default to :80")
+	}
+}
+
+func TestCompileRulesAllowsWhitelistOverrideForHidePersonal(t *testing.T) {
+	c, err := Load(writeTemp(t, `
+[acme]
+hostnames = ["mail.example.com"]
+email = "admin@example.com"
+cache_dir = "/tmp/acme"
+
+[upstream]
+addr = "127.0.0.1:143"
+
+[[rules]]
+user = "*"
+hide_personal = true
+
+[[rules]]
+user = "alice@example.com"
+hide_personal = false
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := c.CompileRules()
+	if !r.For("bob@example.com").ShouldHide("Sent") {
+		t.Error("wildcard hide_personal=true must hide personal folders for bob")
+	}
+	if r.For("alice@example.com").ShouldHide("Sent") {
+		t.Error("alice hide_personal=false must override wildcard true")
 	}
 }
