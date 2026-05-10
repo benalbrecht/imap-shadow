@@ -25,6 +25,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
 )
 
 // ErrLiteralTooLarge is returned when a literal exceeds the maximum allowed size.
@@ -48,6 +49,11 @@ type Framer struct {
 // New wraps r in a Framer. r is buffered internally; do not wrap it again.
 func New(r io.Reader) *Framer {
 	return &Framer{br: bufio.NewReader(r)}
+}
+
+// CopyTo streams all remaining bytes (including any already buffered) to w.
+func (f *Framer) CopyTo(w io.Writer) (int64, error) {
+	return f.br.WriteTo(w)
 }
 
 // ReadLine returns the next logical IMAP line. On a clean EOF before any
@@ -84,6 +90,7 @@ func (f *Framer) ReadLine() ([]byte, error) {
 		if !ok {
 			return out, nil
 		}
+		prefix := append([]byte(nil), out...)
 		if n > 0 {
 			if n > maxLiteralSize {
 				return out, ErrLiteralTooLarge
@@ -109,6 +116,9 @@ func (f *Framer) ReadLine() ([]byte, error) {
 					return out, err
 				}
 			}
+		}
+		if commandMayEndAtLiteral(prefix) {
+			return out, nil
 		}
 		// loop: read the next chunk that continues this logical line
 	}
@@ -144,4 +154,25 @@ func literalCount(line []byte) (int, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// commandMayEndAtLiteral reports whether a literal marker at the end of
+// prefix can terminate the command by itself after exactly N bytes are read.
+func commandMayEndAtLiteral(prefix []byte) bool {
+	if !bytes.HasSuffix(prefix, []byte("\r\n")) {
+		return false
+	}
+	head := strings.TrimSpace(string(prefix[:len(prefix)-2]))
+	fields := strings.Fields(head)
+	if len(fields) < 2 {
+		return false
+	}
+	cmd := strings.ToUpper(fields[1])
+	if cmd == "APPEND" {
+		return true
+	}
+	if cmd == "AUTHENTICATE" {
+		return true
+	}
+	return cmd == "UID" && len(fields) >= 3 && strings.ToUpper(fields[2]) == "APPEND"
 }

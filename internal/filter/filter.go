@@ -11,6 +11,8 @@ package filter
 
 import (
 	"bytes"
+	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -20,12 +22,16 @@ import (
 
 // Filter applies a single Matcher to incoming server lines.
 type Filter struct {
-	m *rules.Matcher
+	user  string
+	m     *rules.Matcher
+	debug bool
 }
 
 // New wraps a rules Matcher in a Filter.
-func New(m *rules.Matcher) *Filter {
-	return &Filter{m: m}
+func New(user string, m *rules.Matcher) *Filter {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("IMAP_SHADOW_DEBUG_FILTER")))
+	debug := v == "1" || v == "true" || v == "yes" || v == "on"
+	return &Filter{user: user, m: m, debug: debug}
 }
 
 // Process returns line for keep, or nil for drop.
@@ -41,7 +47,11 @@ func (f *Filter) Process(line []byte) []byte {
 	if err != nil {
 		decoded = name
 	}
-	if f.m.ShouldHide(decoded) {
+	hide, reason := f.m.HideDecision(decoded)
+	if f.debug {
+		log.Printf("filter: user=%q mailbox=%q hidden=%t reason=%s", f.user, decoded, hide, reason)
+	}
+	if hide {
 		return nil
 	}
 	return line

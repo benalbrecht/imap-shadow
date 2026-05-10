@@ -187,3 +187,37 @@ func TestLiteralAllocationAttack(t *testing.T) {
 		t.Errorf("got error %v want %v", err, io.ErrUnexpectedEOF)
 	}
 }
+
+func TestAppendCanEndAtLiteral(t *testing.T) {
+	in := "8 APPEND \"INBOX/foo1\" {4}\r\nDATAa9 NOOP\r\n"
+	f := New(strings.NewReader(in))
+	if got := read(t, f); got != "8 APPEND \"INBOX/foo1\" {4}\r\nDATA" {
+		t.Errorf("first: %q", got)
+	}
+	if got := read(t, f); got != "a9 NOOP\r\n" {
+		t.Errorf("second: %q", got)
+	}
+}
+
+func TestUIDAppendCanEndAtLiteral(t *testing.T) {
+	in := "A1 UID APPEND \"INBOX\" {3}\r\nxyzA2 NOOP\r\n"
+	f := New(strings.NewReader(in))
+	if got := read(t, f); got != "A1 UID APPEND \"INBOX\" {3}\r\nxyz" {
+		t.Errorf("first: %q", got)
+	}
+	if got := read(t, f); got != "A2 NOOP\r\n" {
+		t.Errorf("second: %q", got)
+	}
+}
+
+func TestAuthenticateCanEndAtLiteral(t *testing.T) {
+	payload := "AHVzZXIAc2VjcmV0"
+	in := "A1 AUTHENTICATE PLAIN {" + "16+" + "}\r\n" + payload + "A2 NOOP\r\n"
+	f := New(strings.NewReader(in))
+	if got := read(t, f); got != "A1 AUTHENTICATE PLAIN {16+}\r\n"+payload {
+		t.Errorf("first: %q", got)
+	}
+	if got := read(t, f); got != "A2 NOOP\r\n" {
+		t.Errorf("second: %q", got)
+	}
+}

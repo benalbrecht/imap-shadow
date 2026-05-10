@@ -64,6 +64,18 @@ func TestAuthenticatePlainMultiLine(t *testing.T) {
 	}
 }
 
+func TestAuthenticatePlainEmptyInitialResponse(t *testing.T) {
+	tr := &Tracker{}
+	tr.HandleClientLine([]byte("t1 AUTHENTICATE PLAIN =\r\n"))
+	tr.HandleServerLine([]byte("+ \r\n"))
+	payload := b64("\x00alice\x00secret")
+	tr.HandleClientLine([]byte(payload + "\r\n"))
+	tr.HandleServerLine([]byte("t1 OK Authenticated\r\n"))
+	if tr.User() != "alice" {
+		t.Errorf("user=%q", tr.User())
+	}
+}
+
 func TestAuthenticateXOAUTH2SASLIR(t *testing.T) {
 	tr := &Tracker{}
 	payload := b64("user=alice@example.com\x01auth=Bearer abc\x01\x01")

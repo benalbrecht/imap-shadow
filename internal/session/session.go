@@ -60,6 +60,14 @@ func (s *Session) Run() error {
 func (s *Session) copyClientToServer() error {
 	f := framer.New(s.Client)
 	for {
+		s.mu.Lock()
+		authed := s.tracker.User() != ""
+		s.mu.Unlock()
+		if authed {
+			_, err := f.CopyTo(s.Server)
+			return err
+		}
+
 		line, rerr := f.ReadLine()
 		if len(line) > 0 {
 			s.mu.Lock()
@@ -86,7 +94,7 @@ func (s *Session) copyServerToClient() error {
 			if committed {
 				user = s.tracker.User()
 				if s.Rules != nil {
-					s.filter = filter.New(s.Rules.For(user))
+					s.filter = filter.New(user, s.Rules.For(user))
 				}
 			}
 			fl := s.filter

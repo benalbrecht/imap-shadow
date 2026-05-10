@@ -13,7 +13,7 @@ func mkFilter(hide ...string) *Filter {
 	r := &rules.Rules{
 		Users: []rules.UserRule{{User: "*", Hide: hide}},
 	}
-	return New(r.For("alice"))
+	return New("alice", r.For("alice"))
 }
 
 func TestPassthroughNonResponseLines(t *testing.T) {

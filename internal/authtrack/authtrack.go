@@ -79,7 +79,10 @@ func (t *Tracker) HandleClientLine(line []byte) {
 		}
 		t.pendingTag = tag
 		t.pendingMech = mech
-		if ir != "" {
+		if ir == "=" {
+			// RFC 4959 empty initial response: wait for continuation payload.
+			t.expectAuthPayload = true
+		} else if ir != "" {
 			t.pendingUser = extractByMech(mech, dup([]byte(ir)))
 		} else {
 			t.expectAuthPayload = true

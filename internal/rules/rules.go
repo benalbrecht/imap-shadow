@@ -81,12 +81,18 @@ func (r *Rules) For(user string) *Matcher {
 
 // ShouldHide reports whether name is hidden under this matcher.
 func (m *Matcher) ShouldHide(name string) bool {
+	hidden, _ := m.HideDecision(name)
+	return hidden
+}
+
+// HideDecision reports whether name is hidden and a short reason code.
+func (m *Matcher) HideDecision(name string) (bool, string) {
 	if strings.EqualFold(name, "INBOX") {
-		return false
+		return false, "inbox-exempt"
 	}
 	for _, h := range m.hide {
 		if name == h || strings.HasPrefix(name, h+"/") {
-			return true
+			return true, "hide-rule"
 		}
 	}
 	if m.hidePersonal {
@@ -98,8 +104,8 @@ func (m *Matcher) ShouldHide(name string) bool {
 			}
 		}
 		if !shared {
-			return true
+			return true, "hide-personal"
 		}
 	}
-	return false
+	return false, "visible"
 }

@@ -91,27 +91,13 @@ func rebuild(line []byte, start, end int, strip map[string]struct{}) []byte {
 		}
 		kept = append(kept, tok)
 	}
+	prefixEnd := start
+	if len(kept) == 0 && start > 0 && line[start-1] == ' ' {
+		prefixEnd = start - 1
+	}
 	out := make([]byte, 0, len(line))
-	out = append(out, line[:start]...)
+	out = append(out, line[:prefixEnd]...)
 	out = append(out, bytes.Join(kept, []byte(" "))...)
 	out = append(out, line[end:]...)
-	// Trim a leftover space immediately before line[end] (e.g. when the last
-	// token was stripped: "A B X" -> "A B " before splicing). We remove a
-	// single trailing space at the end of the rewritten token region.
-	if start < len(out) && len(kept) > 0 {
-		// Recompute the new end of the token region after splice.
-		newEnd := start + len(bytes.Join(kept, []byte(" ")))
-		if newEnd < len(out) && out[newEnd] == ' ' {
-			// Was there a separator already there? Look at original: if line[end-1]
-			// was a space (e.g. trailing token before "]"), drop one space.
-			if end > 0 && line[end-1] == ' ' {
-				out = append(out[:newEnd], out[newEnd+1:]...)
-			}
-		}
-		// Trim a trailing space immediately before CRLF / end.
-		if len(out) >= 3 && out[len(out)-3] == ' ' && out[len(out)-2] == '\r' && out[len(out)-1] == '\n' {
-			out = append(out[:len(out)-3], '\r', '\n')
-		}
-	}
 	return out
 }

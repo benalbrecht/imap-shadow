@@ -111,3 +111,23 @@ func TestRewriteDoesNotStripSubstringMatch(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+func TestRewriteRemovesAllUntaggedCapabilitiesCleanly(t *testing.T) {
+	r := New([]string{"A", "B"})
+	in := []byte("* CAPABILITY A B\r\n")
+	want := []byte("* CAPABILITY\r\n")
+	got := r.Rewrite(in)
+	if string(got) != string(want) {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestRewriteRemovesAllBracketCapabilitiesCleanly(t *testing.T) {
+	r := New([]string{"A", "B"})
+	in := []byte("* OK [CAPABILITY A B] ready\r\n")
+	want := []byte("* OK [CAPABILITY] ready\r\n")
+	got := r.Rewrite(in)
+	if string(got) != string(want) {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
